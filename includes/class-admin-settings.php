@@ -89,7 +89,7 @@ class LLM_GEO_Admin_Settings {
 
         register_setting('llm_geo_settings', 'llm_geo_cta_url', [
             'type'              => 'string',
-            'sanitize_callback' => 'esc_url_raw',
+            'sanitize_callback' => [$this, 'sanitize_cta_url'],
             'default'           => '',
         ]);
 
@@ -115,6 +115,17 @@ class LLM_GEO_Admin_Settings {
             'llm-geo-optimizer',
             'llm_geo_cta'
         );
+    }
+
+    public function sanitize_cta_url($input) {
+        $input = sanitize_text_field($input);
+        if ('' === $input) {
+            return '';
+        }
+        if (strpos($input, '/') === 0) {
+            return $input;
+        }
+        return esc_url_raw($input);
     }
 
     public function sanitize_post_types($input) {

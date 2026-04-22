@@ -3,7 +3,11 @@ defined('ABSPATH') || exit;
 
 class LLM_GEO_Markdown_Endpoint {
 
+    private $converter;
+
     public function __construct() {
+        $this->converter = new LLM_GEO_Content_Converter();
+
         add_action('init', [$this, 'register_rewrite_rules']);
         add_action('template_redirect', [$this, 'handle_request']);
         add_filter('query_vars', [$this, 'add_query_vars']);
@@ -74,8 +78,7 @@ class LLM_GEO_Markdown_Endpoint {
     }
 
     private function serve_post_markdown($post_id) {
-        $converter = new LLM_GEO_Content_Converter();
-        $markdown = $converter->get_post_markdown($post_id);
+        $markdown = $this->converter->get_post_markdown($post_id);
 
         if (!$markdown) {
             status_header(404);

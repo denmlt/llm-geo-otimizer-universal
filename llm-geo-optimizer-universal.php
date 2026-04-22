@@ -36,7 +36,6 @@ final class LLM_GEO_Optimizer {
     }
 
     private function __construct() {
-        new LLM_GEO_Content_Converter();
         new LLM_GEO_LLMS_Generator();
         new LLM_GEO_Markdown_Endpoint();
 
@@ -90,13 +89,10 @@ function llm_geo_uninstall() {
     delete_transient('llm_geo_llms_txt');
     delete_transient('llm_geo_llms_full');
 
-    $posts = get_posts([
-        'post_type'      => 'any',
-        'post_status'    => 'any',
-        'posts_per_page' => -1,
-        'fields'         => 'ids',
-    ]);
-    foreach ($posts as $id) {
-        delete_transient('llm_geo_md_' . $id);
-    }
+    global $wpdb;
+    $wpdb->query(
+        "DELETE FROM {$wpdb->options}
+         WHERE option_name LIKE '_transient_llm_geo_md_%'
+            OR option_name LIKE '_transient_timeout_llm_geo_md_%'"
+    );
 }
