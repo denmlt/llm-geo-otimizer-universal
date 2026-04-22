@@ -15,12 +15,15 @@ AI language models increasingly cite websites in their answers. This plugin impl
 
 ## Features
 
+- **Works with any content source** — Gutenberg, Classic Editor, ACF / SCF, Elementor, and other page builders (see Compatibility below)
 - **Zero configuration** — auto-detects all public post types on activation
 - **Auto-regeneration** — cache invalidates when content is published, updated, or deleted
 - **Domain-portable** — all URLs generated via `home_url()` / `get_permalink()`, works on any domain without reconfiguration
 - **SEO-safe** — all Markdown endpoints return `X-Robots-Tag: noindex`, no duplicate content issues
+- **SEO plugin support** — reads meta descriptions from Rank Math, Yoast SEO, and All in One SEO
 - **robots.txt audit** — built-in checker shows which AI bots are allowed/blocked in your robots.txt
 - **CTA links** — optional call-to-action link at the end of each `.md` page (e.g. "Contact us", "Book a demo")
+- **Extensible** — `llm_geo_post_content` filter lets themes and plugins inject custom content into Markdown output
 - **No external dependencies** — no Composer, no API calls, no JavaScript frameworks
 - **Clean uninstall** — removes all options and transients when deleted
 
@@ -103,6 +106,31 @@ Category: "Electronics"
 **[Contact My Website](https://example.com/contact/)**
 ```
 
+### Content Extraction
+
+The plugin uses a multi-source content pipeline to ensure it works regardless of how your pages are built:
+
+1. **WordPress content pipeline** — runs `the_content` filter with proper `setup_postdata()`. This handles Gutenberg blocks, Classic Editor, shortcode-based builders (Divi, WPBakery), and any builder that hooks into `the_content` (Beaver Builder, Brizy).
+
+2. **Elementor fallback** — if step 1 returns thin content and Elementor is active, the plugin calls Elementor's rendering API (`get_builder_content_for_display`) directly to extract the full page content.
+
+3. **ACF / SCF fallback** — if content is still thin, the plugin recursively walks all Advanced Custom Fields (or Secure Custom Fields) for the post: text, textarea, WYSIWYG, repeater rows, flexible content layouts, and group sub-fields. Non-content fields (images, files, post objects, colors, URLs) are automatically skipped.
+
+The threshold for "thin content" is 100 characters of plain text. If the standard WordPress pipeline already returns substantial content (e.g. a Gutenberg post), the builder/ACF fallbacks are never triggered. This ensures zero impact on sites that don't need them.
+
+Themes and plugins can also inject custom content via the `llm_geo_post_content` filter:
+
+```php
+add_filter('llm_geo_post_content', function ($content, $post) {
+    // Append custom data to the Markdown source
+    $custom = get_post_meta($post->ID, 'my_custom_field', true);
+    if ($custom) {
+        $content .= '<div>' . $custom . '</div>';
+    }
+    return $content;
+}, 10, 2);
+```
+
 ### Content Conversion
 
 The HTML-to-Markdown converter handles:
@@ -140,6 +168,25 @@ Allow: /
 
 The plugin's **robots.txt Check** tab shows you the current status for each bot.
 
+## Compatibility
+
+| Content Source | How It Works | Supported |
+|---|---|---|
+| Gutenberg (Block Editor) | Content in `post_content`, processed via `the_content` filter | Yes |
+| Classic Editor | Same as Gutenberg | Yes |
+| Elementor | `the_content` hook + direct API fallback | Yes |
+| Divi / WPBakery | Shortcodes in `post_content`, processed via `the_content` filter | Yes |
+| Beaver Builder / Brizy | Hooks into `the_content` filter | Yes |
+| ACF / SCF (Advanced Custom Fields) | Recursive field extraction (text, WYSIWYG, repeaters, flexible content, groups) | Yes |
+| Oxygen / Bricks | Use `llm_geo_post_content` filter for custom integration | Via filter |
+| Custom meta fields | Use `llm_geo_post_content` filter | Via filter |
+
+| SEO Plugin | Meta Description | Supported |
+|---|---|---|
+| Rank Math | `rank_math_description` | Yes |
+| Yoast SEO | `_yoast_wpseo_metadesc` | Yes |
+| All in One SEO | `_aioseo_description` | Yes |
+
 ## Requirements
 
 - WordPress 5.8+
@@ -153,6 +200,9 @@ No. All `.md` endpoints and `llms.txt` files return `X-Robots-Tag: noindex`. Sea
 
 **Does it work with custom post types?**
 Yes. The plugin auto-detects all public post types on activation. You can enable/disable each type in settings.
+
+**Does it work with ACF / Elementor / Divi / other page builders?**
+Yes. The plugin uses a multi-step content extraction pipeline. If the standard WordPress content area is empty (common with ACF-based pages or Elementor), the plugin automatically falls back to builder APIs and ACF field extraction. See the Compatibility section above.
 
 **What happens when I move to a different domain?**
 Everything works automatically. URLs are generated dynamically via WordPress functions (`home_url()`, `get_permalink()`). The cache regenerates on first request.
