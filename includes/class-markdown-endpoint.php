@@ -44,6 +44,12 @@ class LLM_GEO_Markdown_Endpoint {
             return;
         }
 
+        // Method 3: Accept header content negotiation
+        if (!$slug && $this->accepts_markdown()) {
+            $this->serve_current_post();
+            return;
+        }
+
         if (!$slug) {
             return;
         }
@@ -89,8 +95,16 @@ class LLM_GEO_Markdown_Endpoint {
 
         header('Content-Type: text/markdown; charset=utf-8');
         header('X-Robots-Tag: noindex');
+        header('Vary: Accept');
+        $token_count = (int) (str_word_count($markdown) * 1.3);
+        header('X-Markdown-Tokens: ' . $token_count);
         echo $markdown;
         exit;
+    }
+
+    private function accepts_markdown() {
+        $accept = isset($_SERVER['HTTP_ACCEPT']) ? $_SERVER['HTTP_ACCEPT'] : '';
+        return strpos($accept, 'text/markdown') !== false;
     }
 
     private function resolve_post_from_slug($slug) {
