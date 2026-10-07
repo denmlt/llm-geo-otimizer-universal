@@ -24,6 +24,8 @@ AI language models increasingly cite websites in their answers. This plugin impl
 - **robots.txt audit** — built-in checker shows which AI bots are allowed/blocked in your robots.txt
 - **CTA links** — optional call-to-action link at the end of each `.md` page (e.g. "Contact us", "Book a demo")
 - **Extensible** — `llm_geo_post_content` filter lets themes and plugins inject custom content into Markdown output
+- **Multilingual (TranslatePress)** — every language gets its own `llms.txt`, `llms-full.txt` and `.md` documents, with translated slugs; nothing changes on a single-language site
+- **Theme filters** — a theme can add sections, drop pages, rename or re-address documents (see Filters below)
 - **No external dependencies** — no Composer, no API calls, no JavaScript frameworks
 - **Clean uninstall** — removes all options and transients when deleted
 
@@ -167,6 +169,66 @@ Allow: /
 ```
 
 The plugin's **robots.txt Check** tab shows you the current status for each bot.
+
+## Multilingual sites
+
+With TranslatePress (free or Pro, SEO Pack for translated slugs) active, every published language has
+its own files, built from what a visitor in that language actually reads:
+
+| Default language | Spanish (example) |
+|---|---|
+| `/llms.txt` | `/es/llms.txt` |
+| `/llms-full.txt` | `/es/llms-full.txt` |
+| `/symptoms/refrigerator-not-cooling.md` | `/es/sintomas/nevera-no-enfria.md` |
+
+- Each file ends with `## Other languages`, linking the same file in the other languages.
+- Documents carry `lang:` in their front matter and are served with `Content-Language`.
+- A translated document is made from the translated page's `<main>` — the page is the only place a
+  theme's `sprintf( __( '… %s' ) )` sentences are actually translated. Its description is the page's
+  own meta description. Without a `<main>`, the plugin falls back to TranslatePress's dictionary.
+- Titles, descriptions and section names in `llms.txt` come from the site's TranslatePress dictionary.
+  Nothing is sent to a machine-translation service; a string the dictionary lacks stays as it is.
+- TranslatePress's output buffer is kept off these responses, so it no longer files whole text files
+  in the dictionary as untranslatable "strings".
+- Translated documents cost a page render to build and are cached for a week; a cold translated
+  `llms-full.txt` is built in 20-second steps across requests. Run `wp llm-geo warm` after a deploy.
+- Saving a translation in the TranslatePress editor drops the cache.
+
+## llms-full.txt
+
+The file is written most useful first: the front page, then the post types in the order the
+`llm_geo_full_post_types` filter returns (default: the configured order). A document that does not
+fit the size limit is skipped, not the end of the file, so shorter ones after it still get in; the
+file ends with how many were left out. The per-document call-to-action is not repeated in it.
+
+## Filters
+
+| Filter | What it changes |
+|---|---|
+| `llm_geo_post_content` | the HTML a document is made from |
+| `llm_geo_sections` | the llms.txt sections before they are written (add archives, an author page) |
+| `llm_geo_query_args` | the query collecting one post type for llms.txt |
+| `llm_geo_primary_taxonomy` | which taxonomy groups a post type (`null` for a flat list) |
+| `llm_geo_front_matter` | a document's front matter (e.g. `url` of a page published under an archive) |
+| `llm_geo_markdown_title` | the heading a document opens with |
+| `llm_geo_full_post_types` | the post types of llms-full.txt, in the order written |
+
+## WP-CLI
+
+```bash
+wp llm-geo flush          # drop every cached file and document, in every language
+wp llm-geo warm --flush   # rebuild: llms.txt, every .md it lists, llms-full.txt — per language
+```
+
+## Checking a site
+
+```bash
+bin/check.sh https://example.com
+```
+
+Reads the site the way an assistant does, in every language listed under `## Other languages`:
+llms.txt parses, every link answers 200, every document's front-matter `url` answers 200 directly
+(never a redirect) and stays in its language, llms-full.txt answers. Needs `curl` only.
 
 ## Compatibility
 

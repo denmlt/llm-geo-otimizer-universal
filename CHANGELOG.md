@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.2.0 — 2026-10-07
+
+- **Multilingual sites (TranslatePress).** `/es/llms.txt`, `/es/llms-full.txt` and `/es/<translated
+  slug>.md` used to answer 200 in English — a duplicate under the wrong language — and the output
+  buffer filed every file in the dictionary as one string. Now each language has its own files;
+  see README → Multilingual sites. No change on a single-language site apart from cache keys.
+- **llms-full.txt by usefulness.** It stopped at the first document that did not fit, ordered by
+  date, so the blog filled it and services and prices never got in. Front page first, then types in
+  `llm_geo_full_post_types` order; a document that does not fit is skipped; no per-document CTA.
+- **Cache generation.** Every cache key carries a generation number; `LLM_GEO_Language::flush()`
+  (the admin "Regenerate" button, `wp llm-geo flush`, a TranslatePress editor save) drops every file
+  and document in every language, on an object cache too. "Regenerate" used to leave each page's
+  cached markdown as it was.
+- **WP-CLI:** `wp llm-geo flush`, `wp llm-geo warm [--flush]`.
+- **`bin/check.sh <url>`** — the site as an assistant reads it, in every language.
+- CI: `php -l` on PHP 7.4–8.4, shellcheck.
+
 ## 1.1.0 — 2026-10-07
 
 Fixes found running the plugin on a 25-site fleet (Aug 2026).

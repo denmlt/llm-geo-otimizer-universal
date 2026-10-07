@@ -5,55 +5,77 @@ class LLM_GEO_Content_Converter {
 
     private const THIN_THRESHOLD = 100;
 
+    /** The meta description of the last page read by translated_content(). */
+    private $rendered_description = '';
+
     // ──────────────────────────────────────────────
     // Public API
     // ──────────────────────────────────────────────
 
-    public function get_post_markdown($post_id) {
+    /**
+     * @param int  $post_id  Post ID.
+     * @param bool $with_cta Close the document with the read-more and call-to-action lines. llms-full.txt
+     *                       leaves them out: the same two lines under every one of a hundred documents
+     *                       are bytes the file's size limit then has no room for.
+     */
+    public function get_post_markdown($post_id, $with_cta = true) {
         $post = get_post($post_id);
         if (!$post || 'publish' !== $post->post_status) {
             return null;
         }
 
-        $cached = get_transient('llm_geo_md_' . $post_id);
-        if (false !== $cached) {
-            return $cached;
+        $key = LLM_GEO_Language::cache_key('llm_geo_md_' . $post_id);
+        $markdown = get_transient($key);
+
+        if (false === $markdown) {
+            $this->rendered_description = '';
+            $html = LLM_GEO_Language::is_translated() ? $this->translated_content($post) : '';
+            if ('' === $html) {
+                $html = LLM_GEO_Language::html($this->extract_content($post));
+            }
+            $content = $this->html_to_markdown($html);
+
+            $front_matter = $this->build_front_matter($post);
+
+            /**
+             * The heading this document opens with.
+             *
+             * A theme may render a post under a different name than it is filed under — an archive's
+             * companion page is stored as "Error codes archive" and published as "Sub-Zero error codes:
+             * what is on your display". The document a model reads should carry the name the page
+             * actually shows, not the one the editor sorts by.
+             *
+             * @param string  $title The post title.
+             * @param WP_Post $post  The post.
+             */
+            $title = LLM_GEO_Language::text(apply_filters('llm_geo_markdown_title', get_the_title($post), $post));
+
+            // 🔴 And only when the body does not already open with one. A page built from sections is
+            // flattened into content that starts with its own H1, so every one of those documents began
+            // with the same heading printed twice — which reads, to anything parsing structure, as two
+            // documents concatenated.
+            $heading = preg_match('/^\s*#\s/', $content) ? '' : "\n# " . $title . "\n";
+
+            $markdown = $front_matter . $heading . "\n" . $content;
+
+            // A translated document costs a page render to build; it keeps for a week. Saving the post
+            // clears it in every language (invalidate_cache), and so does a translation flush.
+            set_transient($key, $markdown, LLM_GEO_Language::is_translated() ? WEEK_IN_SECONDS : DAY_IN_SECONDS);
         }
 
-        $html = $this->extract_content($post);
-        $content = $this->html_to_markdown($html);
-
-        $front_matter = $this->build_front_matter($post);
-
-        /**
-         * The heading this document opens with.
-         *
-         * A theme may render a post under a different name than it is filed under — an archive's
-         * companion page is stored as "Error codes archive" and published as "Sub-Zero error codes:
-         * what is on your display". The document a model reads should carry the name the page
-         * actually shows, not the one the editor sorts by.
-         *
-         * @param string  $title The post title.
-         * @param WP_Post $post  The post.
-         */
-        $title = apply_filters('llm_geo_markdown_title', get_the_title($post), $post);
-
-        // 🔴 And only when the body does not already open with one. A page built from sections is
-        // flattened into content that starts with its own H1, so every one of those documents began
-        // with the same heading printed twice — which reads, to anything parsing structure, as two
-        // documents concatenated.
-        $heading = preg_match('/^\s*#\s/', $content) ? '' : "\n# " . $title . "\n";
-
-        $markdown = $front_matter . $heading . "\n" . $content;
-
-        $cta = $this->build_cta($post);
+        $cta = $with_cta ? $this->build_cta($post) : '';
         if ($cta) {
             $markdown .= "\n\n---\n\n" . $cta;
         }
 
-        set_transient('llm_geo_md_' . $post_id, $markdown, DAY_IN_SECONDS);
-
         return $markdown;
+    }
+
+    /**
+     * The document is already built for this language — reading it costs nothing.
+     */
+    public function is_cached($post_id) {
+        return false !== get_transient(LLM_GEO_Language::cache_key('llm_geo_md_' . $post_id));
     }
 
     public function get_excerpt($post, $words = 30) {
@@ -126,12 +148,68 @@ class LLM_GEO_Content_Converter {
     }
 
     public function invalidate_cache($post_id) {
-        delete_transient('llm_geo_md_' . $post_id);
+        // Every language has its own copy of the document.
+        foreach (LLM_GEO_Language::languages() as $code) {
+            delete_transient(LLM_GEO_Language::cache_key('llm_geo_md_' . $post_id, $code));
+        }
     }
 
     // ──────────────────────────────────────────────
     // Content extraction pipeline
     // ──────────────────────────────────────────────
+
+    /**
+     * The content of a page in the language of this request, read from the page itself.
+     *
+     * 🔴 Translating the plugin's own HTML through the dictionary left half of every page English.
+     * A theme builds sentences with `sprintf( __( 'How a visit in %s is arranged' ), $town )`;
+     * on the page TranslatePress translates the template, but this HTML is built outside the page,
+     * where that translation never runs, and the finished sentence is not in the dictionary. Every
+     * one of them was then filed as a new untranslated string — 1,685 on one site.
+     *
+     * The translated page is what a visitor in that language reads, so the document is made from
+     * its <main>. Empty when the page cannot be fetched; the caller then falls back to the
+     * dictionary.
+     *
+     * @param WP_Post $post The post.
+     */
+    private function translated_content($post) {
+        $url = LLM_GEO_Language::url(get_permalink($post));
+
+        $response = wp_remote_get($url, [
+            'timeout'     => 30,
+            'redirection' => 3,
+            'sslverify'   => false,
+            'headers'     => ['X-LLM-GEO-Render' => '1'],
+        ]);
+
+        if (is_wp_error($response) || 200 !== (int) wp_remote_retrieve_response_code($response)) {
+            return '';
+        }
+
+        $body = (string) wp_remote_retrieve_body($response);
+
+        if (!preg_match('#<main\b[^>]*>(.*)</main>#is', $body, $m)) {
+            return '';
+        }
+
+        // The page's own description, as the dictionary has it — the stored one is longer and is
+        // cut by the theme, so translating the stored one matches nothing.
+        if (preg_match('#<meta name="description" content="([^"]*)"#i', $body, $d)) {
+            $this->rendered_description = html_entity_decode($d[1], ENT_QUOTES, 'UTF-8');
+        }
+
+        // Things that are not prose: code, styles, drawings, the booking widget and its controls,
+        // breadcrumbs, and pictures — the default-language document carries none of them either.
+        $main = preg_replace('#<(script|style|noscript|svg|template|iframe|form|button|select|textarea|nav|picture|figure)\b[^>]*>.*?</\1>#is', '', $m[1]);
+        $main = preg_replace('#<img\b[^>]*>#i', '', (string) $main);
+
+        // Template indentation is not content; without this every block leaves a run of blank,
+        // tab-filled lines in the markdown.
+        $main = preg_replace('#[ \t]*\n\s*#', "\n", (string) $main);
+
+        return LLM_GEO_Language::strip((string) $main);
+    }
 
     private function extract_content($target_post) {
         $saved_post = $GLOBALS['post'] ?? null;
@@ -332,11 +410,28 @@ class LLM_GEO_Content_Converter {
         foreach ($taxonomies as $tax) {
             $terms = get_the_terms($post, $tax->name);
             if ($terms && !is_wp_error($terms)) {
-                $meta[$tax->labels->singular_name] = implode(', ', wp_list_pluck($terms, 'name'));
+                $names = array_map(['LLM_GEO_Language', 'text'], wp_list_pluck($terms, 'name'));
+                $meta[LLM_GEO_Language::strip($tax->labels->singular_name)] = implode(', ', $names);
             }
         }
 
         $meta = $this->filter_front_matter($meta, $post);
+
+        // After the theme has had its say, because the theme fills these in the default language too.
+        if (LLM_GEO_Language::is_translated()) {
+            $meta['title'] = LLM_GEO_Language::text($meta['title']);
+            if ('' !== $this->rendered_description) {
+                $meta['description'] = $this->rendered_description;
+            } else {
+                // Whole, then cut — the dictionary has the whole description, not its first thirty words.
+                $full = html_entity_decode($this->get_excerpt($post, 1000), ENT_QUOTES, 'UTF-8');
+                $meta['description'] = wp_trim_words(LLM_GEO_Language::text($full), 30, '');
+            }
+            $meta['url'] = LLM_GEO_Language::url($meta['url']);
+        }
+        if (LLM_GEO_Language::available()) {
+            $meta['lang'] = LLM_GEO_Language::tag();
+        }
 
         $yaml = "---\n";
         foreach ($meta as $key => $value) {
@@ -370,15 +465,17 @@ class LLM_GEO_Content_Converter {
         $site_name = html_entity_decode(get_bloginfo('name'), ENT_QUOTES, 'UTF-8');
         $lines = [];
 
-        $permalink = get_permalink($post);
-        $title = html_entity_decode(get_the_title($post), ENT_QUOTES, 'UTF-8');
-        $lines[] = "**[Read full article: $title]($permalink)**";
+        $permalink = LLM_GEO_Language::url(get_permalink($post));
+        $title = LLM_GEO_Language::text(html_entity_decode(get_the_title($post), ENT_QUOTES, 'UTF-8'));
+        $read = LLM_GEO_Language::text('Read full article');
+        $lines[] = "**[$read: $title]($permalink)**";
 
         if ($cta_text && $cta_url) {
             if (strpos($cta_url, '/') === 0) {
                 $cta_url = home_url($cta_url);
             }
-            $cta_text = str_replace('{site_name}', $site_name, $cta_text);
+            $cta_url = LLM_GEO_Language::url($cta_url);
+            $cta_text = str_replace('{site_name}', $site_name, LLM_GEO_Language::text($cta_text));
             $lines[] = "**[$cta_text]($cta_url)**";
         }
 

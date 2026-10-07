@@ -3,7 +3,7 @@
  * Plugin Name: LLM & GEO Optimizer
  * Plugin URI: https://github.com/denmlt/llm-geo-otimizer-universal
  * Description: Generates llms.txt, llms-full.txt, and Markdown endpoints for any WordPress site. Helps AI models (ChatGPT, Perplexity, Claude, Gemini) discover and cite your content.
- * Version: 1.1.0
+ * Version: 1.2.0
  * Requires at least: 5.8
  * Requires PHP: 7.4
  * Author: Denys Dyuzhaev
@@ -15,10 +15,11 @@
 
 defined('ABSPATH') || exit;
 
-define('LLM_GEO_VERSION', '1.1.0');
+define('LLM_GEO_VERSION', '1.2.0');
 define('LLM_GEO_PATH', plugin_dir_path(__FILE__));
 define('LLM_GEO_URL', plugin_dir_url(__FILE__));
 
+require_once LLM_GEO_PATH . 'includes/class-language.php';
 require_once LLM_GEO_PATH . 'includes/class-content-converter.php';
 require_once LLM_GEO_PATH . 'includes/class-llms-generator.php';
 require_once LLM_GEO_PATH . 'includes/class-markdown-endpoint.php';
@@ -86,13 +87,24 @@ function llm_geo_uninstall() {
     delete_option('llm_geo_llms_full_limit');
     delete_option('llm_geo_cta_text');
     delete_option('llm_geo_cta_url');
-    delete_transient('llm_geo_llms_txt');
-    delete_transient('llm_geo_llms_full');
 
     global $wpdb;
     $wpdb->query(
         "DELETE FROM {$wpdb->options}
-         WHERE option_name LIKE '_transient_llm_geo_md_%'
-            OR option_name LIKE '_transient_timeout_llm_geo_md_%'"
+         WHERE option_name LIKE '\\_transient\\_llm\\_geo\\_%'
+            OR option_name LIKE '\\_transient\\_timeout\\_llm\\_geo\\_%'"
     );
+    delete_option('llm_geo_cache_generation');
+}
+
+/*
+ * A translation edited in TranslatePress changes what the translated files say. Their cache does
+ * not know that, so it is dropped — the next request rebuilds them.
+ */
+add_action('trp_save_editor_translations_regular_strings', ['LLM_GEO_Language', 'flush']);
+add_action('trp_save_editor_translations_gettext_strings', ['LLM_GEO_Language', 'flush']);
+
+if (defined('WP_CLI') && WP_CLI) {
+    require_once LLM_GEO_PATH . 'includes/class-cli.php';
+    WP_CLI::add_command('llm-geo', 'LLM_GEO_CLI');
 }

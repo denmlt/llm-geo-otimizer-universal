@@ -199,8 +199,9 @@ class LLM_GEO_Admin_Settings {
 
         // Handle manual regeneration
         if (isset($_POST['llm_geo_regenerate']) && check_admin_referer('llm_geo_regenerate_nonce')) {
-            delete_transient('llm_geo_llms_txt');
-            delete_transient('llm_geo_llms_full');
+            // Every file and every markdown document, in every language — this button used to clear the
+            // two files and leave each page's cached markdown as it was.
+            LLM_GEO_Language::flush();
             echo '<div class="notice notice-success"><p>Cache cleared. Files will regenerate on next request.</p></div>';
         }
 

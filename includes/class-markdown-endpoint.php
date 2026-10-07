@@ -110,6 +110,7 @@ class LLM_GEO_Markdown_Endpoint {
     }
 
     private function serve_post_markdown($post_id) {
+        LLM_GEO_Language::prepare();
         $markdown = $this->converter->get_post_markdown($post_id);
 
         if (!$markdown) {
@@ -119,8 +120,12 @@ class LLM_GEO_Markdown_Endpoint {
             exit;
         }
 
+        LLM_GEO_Language::claim_response();
         header('Content-Type: text/markdown; charset=utf-8');
         header('X-Robots-Tag: noindex');
+        if (LLM_GEO_Language::available()) {
+            header('Content-Language: ' . LLM_GEO_Language::tag());
+        }
         header('Vary: Accept');
         $token_count = (int) (str_word_count($markdown) * 1.3);
         header('X-Markdown-Tokens: ' . $token_count);
@@ -140,6 +145,20 @@ class LLM_GEO_Markdown_Endpoint {
         // Try finding by exact path match via url_to_postid
         $url = home_url('/' . $slug . '/');
         $post_id = url_to_postid($url);
+
+        // A translated address (/es/sintomas/lavaplatos-bota-agua.md) names the post by its translated
+        // slugs. SEO Pack maps the base back before WordPress sees the request — but not the last
+        // segment, which still carries `.md` — so the request arrives half-translated
+        // (symptoms/lavaplatos-bota-agua) and matches nothing. Each segment is looked up in SEO Pack's
+        // own slug table; a segment it does not know is already an original.
+        if (!$post_id && LLM_GEO_Language::is_translated()) {
+            $original = LLM_GEO_Language::original_path($slug);
+            if ($original !== $slug) {
+                $origin = preg_replace('#^(https?://[^/]+).*$#', '$1', home_url('/'));
+                $post_id = url_to_postid($origin . '/' . $original . '/');
+                $slug = $original;
+            }
+        }
 
         if ($post_id) {
             $post = get_post($post_id);
