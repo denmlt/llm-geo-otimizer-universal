@@ -3,7 +3,7 @@
  * Plugin Name: LLM & GEO Optimizer
  * Plugin URI: https://github.com/denmlt/llm-geo-otimizer-universal
  * Description: Generates llms.txt, llms-full.txt, and Markdown endpoints for any WordPress site. Helps AI models (ChatGPT, Perplexity, Claude, Gemini) discover and cite your content.
- * Version: 1.2.3
+ * Version: 1.2.4
  * Requires at least: 5.8
  * Requires PHP: 7.4
  * Author: Denys Dyuzhaev
@@ -15,7 +15,7 @@
 
 defined('ABSPATH') || exit;
 
-define('LLM_GEO_VERSION', '1.2.3');
+define('LLM_GEO_VERSION', '1.2.4');
 define('LLM_GEO_PATH', plugin_dir_path(__FILE__));
 define('LLM_GEO_URL', plugin_dir_url(__FILE__));
 

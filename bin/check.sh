@@ -8,8 +8,12 @@
 #   - llms-full.txt answers 200
 #   - the languages listed under "## Other languages" are checked the same way
 #
-# Needs curl and xargs. Links are fetched JOBS at a time (default 8): a translated document that is not
+# Needs curl and xargs. Links are fetched JOBS at a time (default 4): a translated document that is not
 # cached yet costs the server a page render, so one-by-one took 15–20 minutes on a 260-page site.
+# 🔴 Keep JOBS at most HALF the site's PHP workers (pm.max_children): an uncached translated .md holds a
+# worker while it requests its own page from the same server. With 8 jobs on a 2-worker local site every
+# render timed out and the documents fell back to the untranslated text (Thermador, 2026-10-07).
+# A local copy: JOBS=1.
 # Exit status is the number of failures (capped at 255).
 set -uo pipefail
 
@@ -18,7 +22,7 @@ SITE="${SITE%/}"
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 fails=0
 : > "$TMP/langs"
-JOBS="${JOBS:-8}"
+JOBS="${JOBS:-4}"
 fail() { echo "   FAIL $*"; fails=$((fails + 1)); }
 
 # One link: prints "   FAIL …" lines only. Runs in a child shell (xargs), so it reports, never counts.

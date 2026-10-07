@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.4 — 2026-10-07
+
+- `bin/check.sh` runs 4 jobs by default, not 8. An uncached translated document holds a PHP worker
+  while it renders its own page through a second request; 8 jobs starved a 2-worker site into
+  timeouts and untranslated fallbacks. Keep `JOBS` at most half of `pm.max_children`; locally use 1.
+
 ## 1.2.3 — 2026-10-07
 
 - `bin/check.sh` fetches links eight at a time (`JOBS=` to change). One by one it took 15–20 minutes
