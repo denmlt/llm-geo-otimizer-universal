@@ -9,8 +9,34 @@ class LLM_GEO_Markdown_Endpoint {
         $this->converter = new LLM_GEO_Content_Converter();
 
         add_action('init', [$this, 'register_rewrite_rules']);
+        add_action('parse_request', [$this, 'claim_md_requests'], 0);
         add_action('template_redirect', [$this, 'handle_request']);
         add_filter('query_vars', [$this, 'add_query_vars']);
+    }
+
+    /**
+     * A path ending in .md is ours, whichever rewrite rule got to it first.
+     *
+     * 🔴 "top" is not a guarantee. A post type with a taxonomy in its permalink registers rules of
+     * its own depth, and on the Miami fleet the location type — /service-area/{county}/{city}/{place}/
+     * — produced `service-area/[^/]+/[^/]+/([^/]+)/?$`, which sat above this plugin's rule and
+     * swallowed `.../coral-ridge.md` as a location named "coral-ridge.md". Nineteen neighborhood
+     * pages answered 404 in markdown while answering 200 in HTML, and llms.txt listed all nineteen.
+     *
+     * Rule ordering is not something this plugin can rely on in somebody else's theme, so the
+     * suffix is claimed here instead — after the request is parsed, before the query is built.
+     *
+     * @param WP $wp The request.
+     */
+    public function claim_md_requests($wp) {
+        $path = isset($wp->request) ? (string) $wp->request : '';
+
+        if ('' === $path || !preg_match('#^(.+)\.md$#', $path, $matches)) {
+            return;
+        }
+
+        $wp->query_vars   = ['llm_geo_md_slug' => $matches[1]];
+        $wp->matched_rule = '(.+)\.md$';
     }
 
     public function register_rewrite_rules() {

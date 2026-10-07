@@ -24,7 +24,27 @@ class LLM_GEO_Content_Converter {
         $content = $this->html_to_markdown($html);
 
         $front_matter = $this->build_front_matter($post);
-        $markdown = $front_matter . "\n# " . get_the_title($post) . "\n\n" . $content;
+
+        /**
+         * The heading this document opens with.
+         *
+         * A theme may render a post under a different name than it is filed under — an archive's
+         * companion page is stored as "Error codes archive" and published as "Sub-Zero error codes:
+         * what is on your display". The document a model reads should carry the name the page
+         * actually shows, not the one the editor sorts by.
+         *
+         * @param string  $title The post title.
+         * @param WP_Post $post  The post.
+         */
+        $title = apply_filters('llm_geo_markdown_title', get_the_title($post), $post);
+
+        // 🔴 And only when the body does not already open with one. A page built from sections is
+        // flattened into content that starts with its own H1, so every one of those documents began
+        // with the same heading printed twice — which reads, to anything parsing structure, as two
+        // documents concatenated.
+        $heading = preg_match('/^\s*#\s/', $content) ? '' : "\n# " . $title . "\n";
+
+        $markdown = $front_matter . $heading . "\n" . $content;
 
         $cta = $this->build_cta($post);
         if ($cta) {
@@ -316,6 +336,8 @@ class LLM_GEO_Content_Converter {
             }
         }
 
+        $meta = $this->filter_front_matter($meta, $post);
+
         $yaml = "---\n";
         foreach ($meta as $key => $value) {
             $safe_value = str_replace('"', '\\"', $value);
@@ -324,6 +346,21 @@ class LLM_GEO_Content_Converter {
         $yaml .= "---\n\n";
 
         return $yaml;
+    }
+
+    /**
+     * The front matter, after the theme has had a say.
+     *
+     * Two of its four fields can be wrong, and not because the plugin is doing anything wrong. `url` is the post's own
+     * permalink, and a page that exists to supply the copy for an archive redirects to that archive
+     * — so the document told a model to cite an address that answers 301. `title` has the same
+     * problem for the same reason.
+     *
+     * @param array   $meta The front matter, field => value.
+     * @param WP_Post $post The post.
+     */
+    private function filter_front_matter($meta, $post) {
+        return apply_filters('llm_geo_front_matter', $meta, $post);
     }
 
     private function build_cta($post) {

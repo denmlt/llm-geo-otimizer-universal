@@ -83,13 +83,26 @@ class LLM_GEO_LLMS_Generator {
         $post_types = get_option('llm_geo_post_types', ['post', 'page']);
         $sections = $this->build_sections($post_types);
 
+        /**
+         * The assembled sections, before they are written out.
+         *
+         * Everything above is built from posts, so a page that is not a post cannot get in — and the
+         * author archive, which is the page saying who writes the guides and how they are checked,
+         * was therefore absent from a file whose whole purpose is telling a model what to trust.
+         *
+         * @param array $sections Section title => list of ['title','url','description'].
+         */
+        $sections = apply_filters('llm_geo_sections', $sections);
+
         foreach ($sections as $section_title => $items) {
             if (empty($items)) {
                 continue;
             }
             $output .= "## $section_title\n";
             foreach ($items as $item) {
-                $md_url = $this->get_md_url($item['url']);
+                // An entry may name its own address. The markdown endpoint serves posts, so a page
+                // that is not one — an author archive, say — has no .md form and links to itself.
+                $md_url = isset($item['md_url']) ? $item['md_url'] : $this->get_md_url($item['url']);
                 $output .= "- [{$item['title']}]($md_url): {$item['description']}\n";
             }
             $output .= "\n";
@@ -137,6 +150,31 @@ class LLM_GEO_LLMS_Generator {
         return $output;
     }
 
+    /**
+     * Let a theme decide which posts belong in llms.txt.
+     *
+     * Not every published page is a page worth telling a model about. The common case, and the one
+     * this was added for: a theme that uses ordinary pages as companions for post type archives —
+     * the page holds the content, the archive is the public URL, and the page itself 301s. Listed
+     * unfiltered, llms.txt hands an AI crawler a set of redirects in the one file whose entire
+     * purpose is to point at canonical content.
+     *
+     * Sitemaps have had a hook for this since forever. This is the same hook for this file.
+     *
+     * @param array  $args WP_Query arguments.
+     * @param string $pt   Post type being collected.
+     * @return array
+     */
+    private function query_args($args, $pt) {
+        /**
+         * Filter the query used to collect posts of one type for llms.txt.
+         *
+         * @param array  $args Query arguments.
+         * @param string $pt   Post type.
+         */
+        return apply_filters('llm_geo_query_args', $args, $pt);
+    }
+
     private function build_sections($post_types) {
         $sections = [];
 
@@ -155,6 +193,28 @@ class LLM_GEO_LLMS_Generator {
                 }
             }
 
+            /**
+             * Which taxonomy groups this post type in llms.txt.
+             *
+             * The default — the first non-builtin taxonomy — is a good guess and a bad rule. A site
+             * can attach a custom taxonomy to `post` as a secondary relation while the posts are
+             * really organized by category, and the guess then groups every article by a taxonomy
+             * none of them use. That is not a visible bug: it produces empty groups, and the whole
+             * post type quietly vanishes from the file.
+             *
+             * Return a WP_Taxonomy, a taxonomy name, or null for a flat list.
+             *
+             * @param WP_Taxonomy|null $primary_tax Taxonomy chosen by the default rule.
+             * @param string           $pt          Post type.
+             */
+            $primary_tax = apply_filters('llm_geo_primary_taxonomy', $primary_tax, $pt);
+
+            if (is_string($primary_tax)) {
+                $primary_tax = get_taxonomy($primary_tax) ?: null;
+            }
+
+            $grouped = [];
+
             if ($primary_tax) {
                 $terms = get_terms([
                     'taxonomy'   => $primary_tax->name,
@@ -164,7 +224,7 @@ class LLM_GEO_LLMS_Generator {
                 if ($terms && !is_wp_error($terms)) {
                     foreach ($terms as $term) {
                         $section_title = html_entity_decode($type_obj->labels->name . ' — ' . $term->name, ENT_QUOTES, 'UTF-8');
-                        $posts = get_posts([
+                        $posts = get_posts($this->query_args([
                             'post_type'      => $pt,
                             'post_status'    => 'publish',
                             'posts_per_page' => 50,
@@ -174,7 +234,7 @@ class LLM_GEO_LLMS_Generator {
                             ]],
                             'orderby'        => 'title',
                             'order'          => 'ASC',
-                        ]);
+                        ], $pt));
 
                         $items = [];
                         foreach ($posts as $post) {
@@ -184,17 +244,26 @@ class LLM_GEO_LLMS_Generator {
                                 'description' => $this->short_description($post),
                             ];
                         }
-                        $sections[$section_title] = $items;
+                        if ($items) {
+                            $grouped[$section_title] = $items;
+                        }
                     }
                 }
+            }
+
+            if ($grouped) {
+                $sections = array_merge($sections, $grouped);
             } else {
-                $posts = get_posts([
+                // No taxonomy, or a taxonomy none of these posts actually use. Either way the type
+                // gets listed flat rather than not at all — an empty group is the one outcome that
+                // helps nobody, and it is what this branch used to produce silently.
+                $posts = get_posts($this->query_args([
                     'post_type'      => $pt,
                     'post_status'    => 'publish',
                     'posts_per_page' => 50,
                     'orderby'        => 'menu_order date',
                     'order'          => 'ASC',
-                ]);
+                ], $pt));
 
                 $items = [];
                 foreach ($posts as $post) {
@@ -218,12 +287,23 @@ class LLM_GEO_LLMS_Generator {
         return html_entity_decode($excerpt, ENT_QUOTES, 'UTF-8');
     }
 
+    /**
+     * The markdown address for a page.
+     *
+     * 🔴 The front page came out as `[Home](.md)`, the one broken link in a file of 366. Its path is
+     * `/`, which is truthy, so the fallback below was never reached; `rtrim('/', '/')` then left an
+     * empty string and `.md` on its own. The rewrite rule is `(.+)\.md$` and needs at least one
+     * character before the suffix, so the front page cannot have a `.md` address at all — the
+     * `?format=md` form is the one that works, and it is what the fallback was already for.
+     *
+     * This is the page a model reads first to learn what the site is, on all 25 sites.
+     */
     private function get_md_url($permalink) {
         $path = wp_parse_url($permalink, PHP_URL_PATH);
-        if (!$path) {
+        $path = $path ? rtrim($path, '/') : '';
+        if ('' === $path) {
             return $permalink . '?format=md';
         }
-        $path = rtrim($path, '/');
         return $path . '.md';
     }
 }
