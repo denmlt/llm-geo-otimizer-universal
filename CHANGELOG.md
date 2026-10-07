@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.1 — 2026-10-07
+
+- Translated documents kept no `<figure>` at all, so card captions the default-language document
+  has ("The most common call", "Usually not a repair") were missing from every translated `.md`.
+  Only the pictures are dropped now; the captions stay, in the page's language.
+
 ## 1.2.0 — 2026-10-07
 
 - **Multilingual sites (TranslatePress).** `/es/llms.txt`, `/es/llms-full.txt` and `/es/<translated

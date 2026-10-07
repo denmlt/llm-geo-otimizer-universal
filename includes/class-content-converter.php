@@ -200,8 +200,9 @@ class LLM_GEO_Content_Converter {
         }
 
         // Things that are not prose: code, styles, drawings, the booking widget and its controls,
-        // breadcrumbs, and pictures — the default-language document carries none of them either.
-        $main = preg_replace('#<(script|style|noscript|svg|template|iframe|form|button|select|textarea|nav|picture|figure)\b[^>]*>.*?</\1>#is', '', $m[1]);
+        // breadcrumbs, and pictures — the default-language document carries none of them either. A
+        // <figure> stays: themes put card captions in it, and the default-language document has them.
+        $main = preg_replace('#<(script|style|noscript|svg|template|iframe|form|button|select|textarea|nav|picture)\b[^>]*>.*?</\1>#is', '', $m[1]);
         $main = preg_replace('#<img\b[^>]*>#i', '', (string) $main);
 
         // Template indentation is not content; without this every block leaves a run of blank,
