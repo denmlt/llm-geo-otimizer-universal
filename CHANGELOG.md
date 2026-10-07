@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.2 — 2026-10-07
+
+- A translated `.md` whose page render failed (timeout, a 5xx) was built from the untranslated
+  fallback and cached for a week — the wrong language until the next save. That fallback is now
+  cached for ten minutes only.
+
 ## 1.2.1 — 2026-10-07
 
 - Translated documents kept no `<figure>` at all, so card captions the default-language document

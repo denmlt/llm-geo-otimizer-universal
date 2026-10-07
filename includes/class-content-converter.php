@@ -30,6 +30,7 @@ class LLM_GEO_Content_Converter {
         if (false === $markdown) {
             $this->rendered_description = '';
             $html = LLM_GEO_Language::is_translated() ? $this->translated_content($post) : '';
+            $fallback = LLM_GEO_Language::is_translated() && '' === $html;
             if ('' === $html) {
                 $html = LLM_GEO_Language::html($this->extract_content($post));
             }
@@ -60,7 +61,10 @@ class LLM_GEO_Content_Converter {
 
             // A translated document costs a page render to build; it keeps for a week. Saving the post
             // clears it in every language (invalidate_cache), and so does a translation flush.
-            set_transient($key, $markdown, LLM_GEO_Language::is_translated() ? WEEK_IN_SECONDS : DAY_IN_SECONDS);
+            // 🔴 But when that render failed (timeout, a 5xx) the document was built from the
+            // untranslated fallback: keep THAT only ten minutes, or one bad moment serves the wrong
+            // language for a week.
+            set_transient($key, $markdown, $fallback ? 10 * MINUTE_IN_SECONDS : (LLM_GEO_Language::is_translated() ? WEEK_IN_SECONDS : DAY_IN_SECONDS));
         }
 
         $cta = $with_cta ? $this->build_cta($post) : '';
