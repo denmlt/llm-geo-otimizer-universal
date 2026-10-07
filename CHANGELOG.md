@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.3 — 2026-10-07
+
+- `bin/check.sh` fetches links eight at a time (`JOBS=` to change). One by one it took 15–20 minutes
+  on a 260-page bilingual site, because an uncached translated document costs a page render; the
+  checks and the report are the same.
+
 ## 1.2.2 — 2026-10-07
 
 - A translated `.md` whose page render failed (timeout, a 5xx) was built from the untranslated

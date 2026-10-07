@@ -8,7 +8,9 @@
 #   - llms-full.txt answers 200
 #   - the languages listed under "## Other languages" are checked the same way
 #
-# Needs curl only. Exit status is the number of failures (capped at 255).
+# Needs curl and xargs. Links are fetched JOBS at a time (default 8): a translated document that is not
+# cached yet costs the server a page render, so one-by-one took 15–20 minutes on a 260-page site.
+# Exit status is the number of failures (capped at 255).
 set -uo pipefail
 
 SITE="${1:?usage: check.sh https://example.com}"
@@ -16,7 +18,26 @@ SITE="${SITE%/}"
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 fails=0
 : > "$TMP/langs"
+JOBS="${JOBS:-8}"
 fail() { echo "   FAIL $*"; fails=$((fails + 1)); }
+
+# One link: prints "   FAIL …" lines only. Runs in a child shell (xargs), so it reports, never counts.
+check_link() {
+  local url="$1" home="$2" doc code cited
+  doc="$(mktemp)"; trap 'rm -f "$doc"' RETURN
+  code="$(curl -s -o "$doc" -w '%{http_code}' "$url")"
+  [ "$code" = 200 ] || { echo "   FAIL $code $url"; return; }
+  case "$url" in
+    *.md|*format=md)
+      cited="$(sed -n 's/^url: "\(.*\)"$/\1/p' "$doc" | head -1)"
+      [ -n "$cited" ] || { echo "   FAIL no url in front matter: $url"; return; }
+      case "$cited" in "$home"*) ;; *) echo "   FAIL front matter url outside $home: $cited ($url)";; esac
+      code="$(curl -s -o /dev/null -w '%{http_code}' "$cited")"
+      [ "$code" = 200 ] || echo "   FAIL front matter url answers $code: $cited ($url)"
+      ;;
+  esac
+}
+export -f check_link
 
 origin="$(printf '%s' "$SITE" | sed -E 's#^(https?://[^/]+).*#\1#')"
 
@@ -32,19 +53,9 @@ check_index() {
   grep -oE '\]\([^) ]+\)' "$TMP/llms.txt" | sed -E 's/^\]\(//; s/\)$//' | sed "s#^/#$origin/#" | sort -u > "$TMP/links"
   echo "   $(grep -c '^- \[' "$TMP/llms.txt") entries, $(wc -l < "$TMP/links") distinct links"
 
-  while read -r url; do
-    code="$(curl -s -o "$TMP/doc" -w '%{http_code}' "$url")"
-    [ "$code" = 200 ] || { fail "$code $url"; continue; }
-    case "$url" in
-      *.md|*format=md)
-        local cited; cited="$(sed -n 's/^url: "\(.*\)"$/\1/p' "$TMP/doc" | head -1)"
-        [ -n "$cited" ] || { fail "no url in front matter: $url"; continue; }
-        case "$cited" in "$home"*) ;; *) fail "front matter url outside $home: $cited ($url)";; esac
-        code="$(curl -s -o /dev/null -w '%{http_code}' "$cited")"
-        [ "$code" = 200 ] || fail "front matter url answers $code: $cited ($url)"
-        ;;
-    esac
-  done < "$TMP/links"
+  xargs -P "$JOBS" -I{} bash -c 'check_link "$1" "$2"' _ {} "$home" < "$TMP/links" > "$TMP/out"
+  cat "$TMP/out"
+  fails=$((fails + $(grep -c '^   FAIL' "$TMP/out")))
 
   code="$(curl -s -o /dev/null -w '%{http_code}' "${home}llms-full.txt")"
   [ "$code" = 200 ] || fail "$code ${home}llms-full.txt"
