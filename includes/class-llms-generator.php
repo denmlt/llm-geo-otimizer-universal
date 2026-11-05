@@ -8,8 +8,10 @@ class LLM_GEO_LLMS_Generator {
     public function __construct() {
         $this->converter = new LLM_GEO_Content_Converter();
 
-        add_action('save_post', [$this, 'on_content_change'], 20);
-        add_action('delete_post', [$this, 'on_content_change'], 20);
+        // Every change that can alter what is public: a published post edited, published, or taken down
+        // (draft, private, pending, scheduled, trash) — and a post deleted outright.
+        add_action('transition_post_status', [$this, 'on_status_change'], 20, 3);
+        add_action('delete_post', [$this, 'on_delete'], 20);
         add_action('init', [$this, 'register_rewrite_rules']);
         add_action('template_redirect', [$this, 'serve_files']);
     }
@@ -53,13 +55,34 @@ class LLM_GEO_LLMS_Generator {
         exit;
     }
 
-    public function on_content_change($post_id) {
-        if (wp_is_post_revision($post_id) || wp_is_post_autosave($post_id)) {
+    /**
+     * 🔴 Leaving publication must invalidate too. Only "is now published" used to count, so an article moved
+     * to draft, private or trash stayed in the cached llms-full.txt — readable by anyone — until it expired.
+     */
+    public function on_status_change($new_status, $old_status, $post) {
+        if ('publish' !== $new_status && 'publish' !== $old_status) {
             return;
         }
+        $this->invalidate($post);
+    }
 
+    public function on_delete($post_id) {
         $post = get_post($post_id);
-        if (!$post || 'publish' !== $post->post_status) {
+        if ($post) {
+            $this->invalidate($post);
+        }
+    }
+
+    /** Kept for back-compat with code that called it directly. */
+    public function on_content_change($post_id) {
+        $post = get_post($post_id);
+        if ($post) {
+            $this->invalidate($post);
+        }
+    }
+
+    private function invalidate($post) {
+        if (wp_is_post_revision($post) || wp_is_post_autosave($post)) {
             return;
         }
 
@@ -67,6 +90,7 @@ class LLM_GEO_LLMS_Generator {
         if (!in_array($post->post_type, $post_types, true)) {
             return;
         }
+        $post_id = $post->ID;
 
         foreach (['llm_geo_llms_txt', 'llm_geo_llms_full'] as $key) {
             foreach (LLM_GEO_Language::languages() as $code) {

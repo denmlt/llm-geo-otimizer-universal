@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.6 — 2026-11-05
+
+- A post taken out of publication (draft, private, pending, scheduled, trash) now clears `llms.txt`,
+  `llms-full.txt` and its own Markdown document at once. Before, only "is now published" invalidated the
+  caches, so an unpublished article stayed readable in the cached `llms-full.txt` for up to a day.
+  Invalidation runs on `transition_post_status` (any move into or out of `publish`) and `delete_post`.
+
 ## 1.2.5 — 2026-11-05
 
 - Installable with Composer: `composer.json` (package `denmlt/llm-geo-optimizer`, type `wordpress-plugin`,
