@@ -26,7 +26,7 @@ AI language models increasingly cite websites in their answers. This plugin impl
 - **Extensible** — `llm_geo_post_content` filter lets themes and plugins inject custom content into Markdown output
 - **Multilingual (TranslatePress)** — every language gets its own `llms.txt`, `llms-full.txt` and `.md` documents, with translated slugs; nothing changes on a single-language site
 - **Theme filters** — a theme can add sections, drop pages, rename or re-address documents (see Filters below)
-- **No external dependencies** — no Composer, no API calls, no JavaScript frameworks
+- **No external dependencies** — no third-party libraries, no API calls, no JavaScript frameworks
 - **Clean uninstall** — removes all options and transients when deleted
 
 ## Installation
@@ -44,6 +44,15 @@ git clone https://github.com/denmlt/llm-geo-otimizer-universal.git
 ```
 
 Then activate in WordPress admin.
+
+Or with Composer (Bedrock and other Composer-managed sites):
+
+```bash
+composer config repositories.llm-geo vcs https://github.com/denmlt/llm-geo-otimizer-universal
+composer require denmlt/llm-geo-optimizer:^1.2
+```
+
+The package is a `wordpress-plugin`; `composer/installers` puts it in your plugins directory as `llm-geo-optimizer`.
 
 ## Configuration
 

@@ -1,0 +1,25 @@
+{
+  "name": "denmlt/llm-geo-optimizer",
+  "description": "Generates llms.txt, llms-full.txt and Markdown endpoints for any WordPress site, so AI assistants can discover and cite its content.",
+  "type": "wordpress-plugin",
+  "license": "GPL-2.0-or-later",
+  "homepage": "https://github.com/denmlt/llm-geo-otimizer-universal",
+  "keywords": ["wordpress", "wordpress-plugin", "llms.txt", "markdown", "geo", "ai-search"],
+  "authors": [
+    {
+      "name": "Denys Dyuzhaev",
+      "homepage": "https://dyuzhaev.com/"
+    }
+  ],
+  "support": {
+    "issues": "https://github.com/denmlt/llm-geo-otimizer-universal/issues",
+    "source": "https://github.com/denmlt/llm-geo-otimizer-universal"
+  },
+  "require": {
+    "php": ">=7.4",
+    "composer/installers": "^1.0 || ^2.0"
+  },
+  "extra": {
+    "installer-name": "llm-geo-optimizer"
+  }
+}

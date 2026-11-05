@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.5 — 2026-11-05
+
+- Installable with Composer: `composer.json` (package `denmlt/llm-geo-optimizer`, type `wordpress-plugin`,
+  installs to `plugins/llm-geo-optimizer` through `composer/installers`). Add the repository as a VCS source and
+  `composer require denmlt/llm-geo-optimizer:^1.2`. Release archives leave out `.github`.
+
 ## 1.2.4 — 2026-10-07
 
 - `bin/check.sh` runs 4 jobs by default, not 8. An uncached translated document holds a PHP worker
